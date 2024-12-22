@@ -19,7 +19,7 @@ This utility is designed to enable the easy separation of prompts and outputs wh
 
 The utility uses GPT 3.5 in order to send the prompt and output to the large language model and it uses the LLM both to distinguish between these 2 items which are sent back in a JSON response and it also suggests a title 
 
-The intended use case for this utility is if you have a lot of prompts and outputs recorded together in text files on your computer and you are undertaking the process of adding these to a database in which case having quickly generated titles as well as separated prompts and outputs to distinguish these and the data structure might be useful.
+The intended use case for this utility is if you have a lot of prompts and outputs recorded together in text files on your computer and you are undertaking the process of adding these to a database in which case having quickly generated titles as well as separated prompts and outputs to distinguish these and the data structure might be useful
 
 As with many projects, this was a collaboration between my prompting and clumsy debugging and the code generation abilities of Claude Anthropic 3.5 Sonnet.
 
