@@ -11,7 +11,7 @@ pinned: false
 
 ![alt text](screenshots/v1/1.png)
 
-# Prompt And Output Separation Utility
+# Prompt And Output Separation Utility (V1)
 
 [![View on Streamlit](https://img.shields.io/badge/View_on-Streamlit-FF4B4B)]( https://prompt-output-separator.streamlit.app/)
 
