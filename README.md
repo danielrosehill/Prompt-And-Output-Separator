@@ -13,8 +13,7 @@ pinned: false
 
 # Prompt And Output Separation Utility (V1)
 
-[![View on Streamlit](https://img.shields.io/badge/View_on-Streamlit-FF4B4B)]( https://prompt-output-separator.streamlit.app/)
-
+[![View On Hugging Face Spaces](https://img.shields.io/badge/View%20On-Hugging%20Face%20Spaces-blue?style=flat)](https://huggingface.co/spaces/danielrosehill/Prompt-And-Output-Separator)
 
 This utility is designed to enable the easy separation of prompts and outputs when they are recorded together in one long continuous text block. 
 
