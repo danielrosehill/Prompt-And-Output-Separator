@@ -17,7 +17,7 @@ pinned: false
 
 This utility is designed to enable the easy separation of prompts and outputs when they are recorded together in one long continuous text block. 
 
-The utility uses GPT 3.5 in order to send the prompt and output to the large language model and it uses the LLM both to distinguish between these two items which are sent back in a JSON response and it also suggests a title. 
+The utility uses GPT 3.5 in order to send the prompt and output to the large language model and it uses the LLM both to distinguish between these 2 items which are sent back in a JSON response and it also suggests a title. 
 
 The intended use case for this utility is if you have a lot of prompts and outputs recorded together in text files on your computer and you are undertaking the process of adding these to a database in which case having quickly generated titles as well as separated prompts and outputs to distinguish these and the data structure might be useful.
 
