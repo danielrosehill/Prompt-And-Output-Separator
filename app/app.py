@@ -5,20 +5,13 @@ import time
 import os
 from io import StringIO
 import pyperclip
-from openai import OpenAI
 import json
+import requests
 
-# Page Configuration
-st.set_page_config(
-    page_title="Prompt Output Separator",
-    page_icon="✂️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Prompt Output Separator", page_icon="✂️", layout="wide", initial_sidebar_state="expanded")
 
-# Initialize session state variables
-if 'openai_api_key' not in st.session_state:
-    st.session_state.openai_api_key = None
+if 'api_key' not in st.session_state:
+    st.session_state.api_key = None
 if 'history' not in st.session_state:
     st.session_state.history = []
 if 'prompt' not in st.session_state:
@@ -36,37 +29,77 @@ def count_text_stats(text):
     return words, chars
 
 def analyze_with_llm(text):
-    if not st.session_state.openai_api_key:
+    if not st.session_state.api_key:
         st.error("Please provide an OpenAI API key in the sidebar")
         return None, None, None
     try:
-        client = OpenAI(api_key=st.session_state.openai_api_key)
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo-1106",
-            messages=[
+        headers = {
+            "Authorization": f"Bearer {st.session_state.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "model": "gpt-4",
+            "messages": [
                 {
                     "role": "system",
-                    "content": """You are a text analysis expert. Your task is to separate a conversation into the prompt/question and the response/answer. Return ONLY a JSON object with three fields: - title: a short, descriptive title for the conversation (max 6 words) - prompt: the user's question or prompt - output: the response or answer If you cannot clearly identify any part, set it to null."""
+                    "content": """You are a text separator. Your ONLY job is to split the input text into its original prompt and response components. 
+                    
+CRITICAL RULES:
+- DO NOT summarize or modify ANY text
+- Return the EXACT original text split into two parts
+- Make NO changes to the content
+- Preserve ALL formatting and whitespace
+
+Return ONLY a JSON object with these fields:
+- title: brief descriptive title (max 6 words)
+- prompt: the EXACT, COMPLETE first part of the conversation
+- output: the EXACT, COMPLETE response/answer part"""
                 },
                 {
                     "role": "user",
-                    "content": f"Please analyze this text and separate it into title, prompt and output: {text}"
+                    "content": f"Split this text into its original parts with NO modifications: {text}"
                 }
             ],
-            temperature=0,
-            response_format={"type": "json_object"}
+            "temperature": 0
+        }
+        
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=data
         )
-        result = response.choices[0].message.content
-        parsed = json.loads(result)
-        return parsed.get("title"), parsed.get("prompt"), parsed.get("output")
+        
+        if response.status_code == 200:
+            result = response.json()['choices'][0]['message']['content']
+            try:
+                parsed = json.loads(result)
+                # Verify no content was lost
+                original_words = len(text.split())
+                result_words = len((parsed.get("prompt", "") + parsed.get("output", "")).split())
+                if result_words < original_words * 0.9:  # Allow for 10% difference due to splitting
+                    st.error("Content was modified during processing. Using basic split instead.")
+                    parts = text.split('\n\n', 1)
+                    if len(parts) == 2:
+                        return "Untitled Conversation", parts[0].strip(), parts[1].strip()
+                    return "Untitled Conversation", text.strip(), ""
+                return parsed.get("title"), parsed.get("prompt"), parsed.get("output")
+            except json.JSONDecodeError:
+                st.error("Failed to parse LLM response as JSON")
+                return None, None, None
+        else:
+            st.error(f"API request failed with status code: {response.status_code}")
+            st.error(f"Response: {response.text}")
+            return None, None, None
+            
     except Exception as e:
-      st.error(f"Error analyzing text: {str(e)}. The error was: {e}")
-      return None, None, None
+        st.error(f"Error analyzing text: {str(e)}")
+        return None, None, None
 
 def separate_prompt_output(text):
     if not text:
         return "", "", ""
-    if st.session_state.openai_api_key:
+    if st.session_state.api_key:
         title, prompt, output = analyze_with_llm(text)
         if all(v is not None for v in [title, prompt, output]):
             return title, prompt, output
@@ -82,44 +115,31 @@ def process_column(column):
         processed_data.append({"Title": title, "Prompt": prompt, "Output": output})
     return pd.DataFrame(processed_data)
 
-# Sidebar configuration
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/chat.png", width=50)
     st.markdown("## 🛠️ Configuration")
-    api_key = st.text_input("Enter OpenAI API Key", type="password")
+    api_key = st.text_input("Enter OpenAI API Key", type="password", help="Get your API key from platform.openai.com")
     if api_key:
-        st.session_state.openai_api_key = api_key
+        st.session_state.api_key = api_key
 
-    # Dark mode toggle using checkbox
     st.markdown("---")
     st.markdown("## 🎨 Appearance")
     dark_mode = st.checkbox("Dark Mode", value=st.session_state.mode == 'dark')
     st.session_state.mode = 'dark' if dark_mode else 'light'
 
-# Main interface
 st.title("✂️ Prompt Output Separator")
-st.markdown(
-    "Utility to assist with separating prompts and outputs when they are recorded in a unified block of text. For cost-optimisation, uses GPT 3.5.")
+st.markdown("Utility to assist with separating prompts and outputs when they are recorded in a unified block of text.")
 
-# Tabs with icons
 tabs = st.tabs(["📝 Paste Text", "📁 File Processing", "📊 History"])
 
-# Paste Text Tab
 with tabs[0]:
     st.subheader("Paste Prompt and Output")
     
-    # Input area with placeholder
     input_container = st.container()
     
     with input_container:
-        input_text = st.text_area(
-            "Paste your conversation here...",
-            height=200,
-            placeholder="Paste your conversation here. The tool will automatically separate the prompt from the output.",
-            help="Enter the text you want to separate into prompt and output."
-        )
+        input_text = st.text_area("Paste your conversation here...", height=200, placeholder="Paste your conversation here. The tool will automatically separate the prompt from the output.", help="Enter the text you want to separate into prompt and output.")
         
-        # Process button
         if st.button("🔄 Process", use_container_width=True) and input_text:
             with st.spinner("Processing..."):
                 title, prompt, output = separate_prompt_output(input_text)
@@ -128,26 +148,11 @@ with tabs[0]:
                 st.session_state.output = output
                 st.session_state.history.append(input_text)
     
-    # Suggested Title Section
     st.markdown("### 📌 Suggested Title")
-    title_area = st.text_area(
-        "",
-        value=st.session_state.get('title', ""),
-        height=70,
-        key="title_area",
-        help="AI-generated title based on the conversation content"
-    )
+    title_area = st.text_area("", value=st.session_state.get('title', ""), height=70, key="title_area", help="AI-generated title based on the conversation content")
 
-    # Prompt Section
     st.markdown("### 📝 Prompt")
-    prompt_area = st.text_area(
-        "",
-        value=st.session_state.get('prompt', ""),
-        height=200,
-        key="prompt_area",
-        help="The extracted prompt will appear here"
-    )
-    # Display prompt stats
+    prompt_area = st.text_area("", value=st.session_state.get('prompt', ""), height=200, key="prompt_area", help="The extracted prompt will appear here")
     prompt_words, prompt_chars = count_text_stats(st.session_state.get('prompt', ""))
     st.markdown(f"<p class='stats-text'>Words: {prompt_words} | Characters: {prompt_chars}</p>", unsafe_allow_html=True)
     
@@ -155,16 +160,8 @@ with tabs[0]:
         pyperclip.copy(st.session_state.get('prompt', ""))
         st.success("Copied prompt to clipboard!")
 
-    # Output Section
     st.markdown("### 🤖 Output")
-    output_area = st.text_area(
-        "",
-        value=st.session_state.get('output', ""),
-        height=200,
-        key="output_area",
-        help="The extracted output will appear here"
-    )
-    # Display output stats
+    output_area = st.text_area("", value=st.session_state.get('output', ""), height=200, key="output_area", help="The extracted output will appear here")
     output_words, output_chars = count_text_stats(st.session_state.get('output', ""))
     st.markdown(f"<p class='stats-text'>Words: {output_words} | Characters: {output_chars}</p>", unsafe_allow_html=True)
     
@@ -172,28 +169,29 @@ with tabs[0]:
         pyperclip.copy(st.session_state.get('output', ""))
         st.success("Copied output to clipboard!")
 
-# File Processing Tab
 with tabs[1]:
-    st.subheader("File Processing")
+    st.subheader("Process File")
     uploaded_file = st.file_uploader("Choose a file", type=['txt', 'csv'])
     
     if uploaded_file is not None:
         try:
             if uploaded_file.type == "text/csv":
                 df = pd.read_csv(uploaded_file)
-                column = st.selectbox("Select column to process", df.columns)
+                st.write("Select the column containing the conversations:")
+                column = st.selectbox("Column", df.columns.tolist())
                 if st.button("Process CSV"):
                     with st.spinner("Processing..."):
-                        processed_df = process_column(df[column])
-                        st.write(processed_df)
+                        result_df = process_column(df[column])
+                        st.write(result_df)
                         st.download_button(
                             "Download Processed CSV",
-                            processed_df.to_csv(index=False),
-                            "processed_data.csv",
-                            "text/csv"
+                            result_df.to_csv(index=False).encode('utf-8'),
+                            "processed_conversations.csv",
+                            "text/csv",
+                            key='download-csv'
                         )
             else:
-                content = uploaded_file.getvalue().decode("utf-8")
+                content = StringIO(uploaded_file.getvalue().decode("utf-8")).read()
                 if st.button("Process Text File"):
                     with st.spinner("Processing..."):
                         title, prompt, output = separate_prompt_output(content)
@@ -202,10 +200,10 @@ with tabs[1]:
                         st.session_state.output = output
                         st.session_state.history.append(content)
                         st.experimental_rerun()
+                        
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
 
-# History Tab
 with tabs[2]:
     st.subheader("Processing History")
     if st.session_state.history:
@@ -215,41 +213,13 @@ with tabs[2]:
             
         for idx, item in enumerate(reversed(st.session_state.history)):
             with st.expander(f"Entry {len(st.session_state.history) - idx}", expanded=False):
-                st.text_area(
-                    "Content",
-                    value=item,
-                    height=150,
-                    key=f"history_{idx}",
-                    disabled=True
-                )
+                st.text_area("Content", value=item, height=150, key=f"history_{idx}", disabled=True)
     else:
         st.info("💡 No processing history available yet. Process some text to see it here.")
 
-# Footer
 st.markdown("---")
-st.markdown(
-    """
-    <div style='text-align: center'>
-        <p>Created by <a href="https://github.com/danielrosehill/Prompt-And-Output-Separator">Daniel Rosehill</a></p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+st.markdown("<div style='text-align: center'><p>Created by <a href='https://github.com/danielrosehill/Prompt-And-Output-Separator'>Daniel Rosehill</a></p></div>", unsafe_allow_html=True)
 
-# Custom CSS for stats text to prevent them from overlapping
-st.markdown("""
-<style>
-.stats-text {
-    text-align: left;
-    font-size: 0.8em;
-    color: #888; /* Darker gray to fit the style */
-    margin-top: -10px; /* push the stats closer to the textarea */
-    margin-bottom: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# Custom CSS to style dark mode
 if st.session_state.mode == 'dark':
     st.markdown("""
     <style>
@@ -258,11 +228,11 @@ if st.session_state.mode == 'dark':
             background-color: #262730;
         }
         .stTextInput, .stTextArea, .stNumberInput, .stSelectbox, .stRadio, .stCheckbox, .stSlider, .stDateInput, .stTimeInput {
-            background-color: #3d3d4d; /* Darker background for input widgets */
-            color: #fff; /* White text for better contrast */
+            background-color: #3d3d4d;
+            color: #fff;
         }
        .stButton>button {
-            background-color: #5c5c7a; /* Adjust button color */
+            background-color: #5c5c7a;
             color: white;
         }
          .stButton>button:hover {
@@ -287,38 +257,21 @@ if st.session_state.mode == 'dark':
             background-color: #3d3d4d !important;
             color: #fff !important;
         }
-
-        .st-ba {
-            background-color: #3d3d4d; /* Makes the body background dark */
-            color: #fff;
+        
+        .stats-text {
+            color: #aaa !important;
         }
         
         .css-10trblm {
-            background-color: #3d3d4d;
-             color: #fff;
+            color: #fff !important;
         }
         
-        .css-qbe2hs {
-            color: #fff;
+        .css-16idsys {
+            color: #fff !important;
         }
         
-        .css-1wtrr7o {
-            color: #fff;
-        }
-        
-        .css-103n16l {
-            color: #fff;
-        }
-        
-        .css-10pw50 {
-             color: #fff;
-        }
-        
-        .css-z5fcl4 {
-           color: #fff;
-        }
-        .css-1d391kg {
-            color: #fff;
+        .css-1vq4p4l {
+            color: #fff !important;
         }
     </style>
     """, unsafe_allow_html=True)
